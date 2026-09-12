@@ -1,0 +1,7 @@
+seq,cell,class,zone,slot,attempt,success,failed_stage,message,duration_s,placed_ok,final_x,final_y
+1,1,green,left,0,1,1,,"完成",32.5,1,0.0461,0.1427
+2,2,red,front,0,1,1,,"完成",32.5,1,0.2015,-0.0209
+3,3,blue,right,0,1,1,,"完成",32.5,1,0.0439,-0.1413
+4,4,blue,right,1,1,1,,"完成",32.8,1,0.0968,-0.1407
+5,5,green,left,1,1,1,,"完成",32.8,1,0.0963,0.1403
+6,6,red,front,1,1,1,,"完成",32.6,1,0.2012,0.0210

@@ -1,0 +1,8 @@
+scenario=normal
+world=/home/nvidia/Desktop/exp3_sim_ws/install/mecharm_sort/share/mecharm_sort/worlds/sort_world.sdf
+grid=/home/nvidia/Desktop/exp3_sim_ws/install/mecharm_sort/share/mecharm_sort/config/grid.yaml
+gui=False
+record=True
+grid_mode=aruco
+taught=False
+camera_pose=

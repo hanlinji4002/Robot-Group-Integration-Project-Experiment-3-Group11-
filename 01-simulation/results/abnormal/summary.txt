@@ -1,0 +1,7 @@
+任务状态：FINISHED
+扫描次数：5，抓取轮次：4
+成功分类物体：3 个（green 1，blue 1，red 1）
+各区域：left 1，right 1，front 1
+跳过的网格：2(unknown_object)，6(unreachable)
+异常统计：grasp_failed 1，empty_grid 4，unknown_object 1，unreachable 1
+日志目录：/home/nvidia/exp3_logs/abnormal_20260912_172219

@@ -1,0 +1,7 @@
+任务状态：FINISHED
+扫描次数：7，抓取轮次：6
+成功分类物体：6 个（green 2，red 2，blue 2）
+各区域：left 2，front 2，right 2
+跳过的网格：无
+异常统计：empty_grid 6
+日志目录：/home/nvidia/exp3_logs/normal_20260912_171600
