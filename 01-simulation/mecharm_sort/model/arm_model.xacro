@@ -1,0 +1,209 @@
+<?xml version="1.0"?>
+<!--
+【讲解】机械臂模型（URDF 的 xacro 写法，启动时由 xacro 展开）。
+- 骨架来自厂商官方 mycobot_description 包的 mechArm 270-Pi 模型（关节 origin/axis 逐字段一致），网格用 package:// 引用。
+- 我们补的部分：① 每个连杆的惯量（Gazebo 物理需要）② 关节限位与速度上限 ③ 官方夹爪的 5 个 mimic（联动）关节登记进 ros2_control，
+  否则 Gazebo 里夹爪连杆会散架 ④ 指垫碰撞体改成轴对齐小盒（曲面网格会被凸包化，导致隔空碰撞）⑤ 末尾的 <ros2_control> 与 gz_ros2_control 插件标签。
+讲解要点：零位姿态 = 大臂竖直、小臂水平向前（L 形），与真机一致。
+-->
+<!--
+  mechArm 270 (Pi) + 自适应夹爪 的 Gazebo 仿真模型。
+
+  基于官方 mycobot_ros2/mycobot_description 的
+  mecharm_270_pi_adaptive_gripper.urdf 改造，官方文件缺三样东西：
+    1. 惯量 <inertial>          - Gazebo 物理必需。质量按整机 1kg 分配，
+                                  惯量量级参考 automaticaddison/mycobot_ros2
+                                  的 myCobot 280 (同厂同级别) 取 1e-4 量级。
+    2. 关节速度限位              - 官方写 0（= 不能动）。按官方规格书
+                                  最大 120°/s ≈ 2.1 rad/s 修正。
+    3. ros2_control / Gazebo 插件 - 仿真控制接口，见文件末尾。
+  网格文件直接引用官方 mycobot_description 包，几何原点与官方一致。
+-->
+<robot xmlns:xacro="http://www.ros.org/wiki/xacro" name="mecharm_270">
+
+  <!-- 控制器配置文件路径由 launch 文件传入 -->
+  <xacro:arg name="controllers_file" default="controllers.yaml"/>
+
+  <xacro:property name="mesh_arm" value="package://mycobot_description/urdf/mecharm_270_pi"/>
+  <xacro:property name="mesh_grip" value="package://mycobot_description/urdf/adaptive_gripper"/>
+  <xacro:property name="vel_arm" value="2.1"/>
+  <xacro:property name="vel_grip" value="1.5"/>
+  <xacro:property name="effort" value="100.0"/>
+
+  <!-- 简易惯量宏：数值只需量级正确，物理仿真即稳定 -->
+  <xacro:macro name="inertial_block" params="mass i">
+    <inertial>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <mass value="${mass}"/>
+      <inertia ixx="${i}" ixy="0" ixz="0" iyy="${i}" iyz="0" izz="${i}"/>
+    </inertial>
+  </xacro:macro>
+
+  <!-- 链节宏：视觉/碰撞同官方，外加惯量 -->
+  <xacro:macro name="arm_link" params="name mesh ox oy oz r p y mass i">
+    <link name="${name}">
+      <visual>
+        <geometry><mesh filename="${mesh}"/></geometry>
+        <origin xyz="${ox} ${oy} ${oz}" rpy="${r} ${p} ${y}"/>
+      </visual>
+      <collision>
+        <geometry><mesh filename="${mesh}"/></geometry>
+        <origin xyz="${ox} ${oy} ${oz}" rpy="${r} ${p} ${y}"/>
+      </collision>
+      <xacro:inertial_block mass="${mass}" i="${i}"/>
+    </link>
+  </xacro:macro>
+
+  <!-- 底座焊接到世界，防止整臂被碰倒 -->
+  <link name="world"/>
+  <joint name="world_to_base" type="fixed">
+    <parent link="world"/>
+    <child link="base"/>
+  </joint>
+
+  <xacro:arm_link name="base"  mesh="${mesh_arm}/base.dae"  ox="0" oy="0" oz="0"       r="0" p="0" y="-3.1415926" mass="0.30" i="3e-4"/>
+  <xacro:arm_link name="link1" mesh="${mesh_arm}/link1.dae" ox="0" oy="0" oz="-0.132"  r="0" p="0" y="0"          mass="0.12" i="1.5e-4"/>
+  <xacro:arm_link name="link2" mesh="${mesh_arm}/link2.dae" ox="-0.005" oy="0.21" oz="0.002" r="1.5708" p="-3.1415926" y="0" mass="0.15" i="1.5e-4"/>
+  <xacro:arm_link name="link3" mesh="${mesh_arm}/link3.dae" ox="-0.09" oy="0.306" oz="0.005" r="1.5708" p="3.1415926" y="0" mass="0.12" i="1.5e-4"/>
+  <xacro:arm_link name="link4" mesh="${mesh_arm}/link4.dae" ox="0.009" oy="-0.311" oz="-0.228" r="0" p="1.5708" y="1.5708" mass="0.08" i="1.0e-4"/>
+  <xacro:arm_link name="link5" mesh="${mesh_arm}/link5.dae" ox="-0.292" oy="-0.318" oz="-0.007" r="1.5708" p="0" y="3.1415926" mass="0.08" i="1.0e-4"/>
+  <xacro:arm_link name="link6" mesh="${mesh_arm}/link6.dae" ox="-0.1645" oy="0.0536" oz="-0.211" r="0" p="1.5708" y="0" mass="0.05" i="5e-5"/>
+
+  <!-- 夹爪：官方 adaptive_gripper 网格与装配（原点与官方/automaticaddison
+       完全一致），碰撞体用 automaticaddison 的小盒方案——爪形曲面网格
+       做碰撞体会被物理引擎凸包化成大包块，导致隔空碰撞。
+       注意：5 个 mimic 从动关节必须同时登记进下方 ros2_control 块，
+       否则在 Gazebo 里是自由关节，连杆会被重力甩散（曾出现"多一根
+       突出、指件交叠穿模"的现象，根源即此）。 -->
+  <xacro:macro name="grip_link" params="name ox oy oz cbx cby cbz cx cy cz mass">
+    <link name="${name}">
+      <visual>
+        <geometry><mesh filename="${mesh_grip}/${name}.dae"/></geometry>
+        <origin xyz="${ox} ${oy} ${oz}" rpy="0 0 0"/>
+      </visual>
+      <collision>
+        <geometry><box size="${cbx} ${cby} ${cbz}"/></geometry>
+        <origin xyz="${cx} ${cy} ${cz}" rpy="0 0 0"/>
+      </collision>
+      <xacro:inertial_block mass="${mass}" i="2e-6"/>
+    </link>
+  </xacro:macro>
+
+  <xacro:grip_link name="gripper_base"   ox="0" oy="0" oz="-0.012"          cbx="0.065" cby="0.025" cbz="0.025" cx="0" cy="0" cz="0" mass="0.07"/>
+  <xacro:grip_link name="gripper_left1"  ox="0.039" oy="-0.0133" oz="-0.012" cbx="0.013" cby="0.02" cbz="0.015" cx="0.013" cy="0.042" cz="-0.010" mass="0.007"/>
+  <xacro:grip_link name="gripper_left2"  ox="0.005" oy="-0.0195" oz="-0.012" cbx="0.02" cby="0.02" cbz="0.02" cx="-0.025" cy="0" cz="-0.010" mass="0.007"/>
+  <xacro:grip_link name="gripper_left3"  ox="0.012" oy="0.0025" oz="-0.012"  cbx="0.01" cby="0.01" cbz="0.01" cx="-0.014" cy="0.005" cz="0.005" mass="0.007"/>
+  <xacro:grip_link name="gripper_right1" ox="-0.039" oy="-0.0133" oz="-0.012" cbx="0.013" cby="0.02" cbz="0.015" cx="-0.013" cy="0.042" cz="-0.010" mass="0.007"/>
+  <xacro:grip_link name="gripper_right2" ox="-0.005" oy="-0.0195" oz="-0.012" cbx="0.02" cby="0.02" cbz="0.02" cx="0.025" cy="0" cz="-0.010" mass="0.007"/>
+  <xacro:grip_link name="gripper_right3" ox="-0.012" oy="0.0025" oz="-0.012"  cbx="0.01" cby="0.01" cbz="0.01" cx="0.014" cy="0.005" cz="0.005" mass="0.007"/>
+
+  <!-- 手臂 6 关节：几何与限位同官方，速度限位按规格书 120°/s 修正 -->
+  <joint name="joint1_to_base" type="revolute">
+    <axis xyz="0 0 1"/>
+    <limit effort="${effort}" lower="-2.792527" upper="2.792527" velocity="${vel_arm}"/>
+    <parent link="base"/><child link="link1"/>
+    <origin xyz="0 0 0.1" rpy="0 0 0"/>
+  </joint>
+  <joint name="joint2_to_joint1" type="revolute">
+    <axis xyz="0 0 1"/>
+    <limit effort="${effort}" lower="-1.3089" upper="2.0943" velocity="${vel_arm}"/>
+    <parent link="link1"/><child link="link2"/>
+    <origin xyz="0 0 0.038" rpy="-1.5708 0 0"/>
+  </joint>
+  <joint name="joint3_to_joint2" type="revolute">
+    <axis xyz="0 0 1"/>
+    <limit effort="${effort}" lower="-3.0543" upper="1.1344" velocity="${vel_arm}"/>
+    <parent link="link2"/><child link="link3"/>
+    <origin xyz="0.0 -0.1 0" rpy="0 0 0"/>
+  </joint>
+  <joint name="joint4_to_joint3" type="revolute">
+    <axis xyz="0 0 1"/>
+    <limit effort="${effort}" lower="-2.7052" upper="2.7052" velocity="${vel_arm}"/>
+    <parent link="link3"/><child link="link4"/>
+    <origin xyz="0.108 -0.005 -0.001" rpy="0 1.5708 0"/>
+  </joint>
+  <joint name="joint5_to_joint4" type="revolute">
+    <axis xyz="0 0 1"/>
+    <limit effort="${effort}" lower="-2.0071" upper="2.0071" velocity="${vel_arm}"/>
+    <parent link="link4"/><child link="link5"/>
+    <origin xyz="-0.001 0 0.0" rpy="0 -1.5708 0"/>
+  </joint>
+  <joint name="joint6_to_joint5" type="revolute">
+    <axis xyz="0 0 1"/>
+    <limit effort="${effort}" lower="-3.14" upper="3.14" velocity="${vel_arm}"/>
+    <parent link="link5"/><child link="link6"/>
+    <origin xyz="0.06 0.00 -0.0" rpy="0 1.5708 0"/>
+  </joint>
+  <joint name="joint6output_to_gripper_base" type="fixed">
+    <parent link="link6"/><child link="gripper_base"/>
+    <origin xyz="0 0 0.038" rpy="1.579 0 0"/>
+  </joint>
+
+  <!-- 官方夹爪关节：gripper_controller 主动，5 个 mimic 从动（官方联动比） -->
+  <joint name="gripper_controller" type="revolute">
+    <axis xyz="0 0 1"/>
+    <limit effort="${effort}" lower="-0.7" upper="0.15" velocity="${vel_grip}"/>
+    <parent link="gripper_base"/><child link="gripper_left3"/>
+    <origin xyz="-0.012 0.005 0" rpy="0 0 0"/>
+  </joint>
+  <xacro:macro name="mimic_joint" params="name parent child ox oy lo up mult">
+    <joint name="${name}" type="revolute">
+      <axis xyz="0 0 1"/>
+      <limit effort="${effort}" lower="${lo}" upper="${up}" velocity="${vel_grip}"/>
+      <parent link="${parent}"/><child link="${child}"/>
+      <origin xyz="${ox} ${oy} 0" rpy="0 0 0"/>
+      <mimic joint="gripper_controller" multiplier="${mult}" offset="0"/>
+    </joint>
+  </xacro:macro>
+  <xacro:mimic_joint name="gripper_base_to_gripper_left2"    parent="gripper_base"  child="gripper_left2"  ox="-0.005" oy="0.027" lo="-0.8"  up="0.5" mult="1.0"/>
+  <xacro:mimic_joint name="gripper_left3_to_gripper_left1"   parent="gripper_left3" child="gripper_left1"  ox="-0.027" oy="0.016" lo="-0.5"  up="0.5" mult="-1.0"/>
+  <xacro:mimic_joint name="gripper_base_to_gripper_right3"   parent="gripper_base"  child="gripper_right3" ox="0.012"  oy="0.005" lo="-0.15" up="0.7" mult="-1.0"/>
+  <xacro:mimic_joint name="gripper_base_to_gripper_right2"   parent="gripper_base"  child="gripper_right2" ox="0.005"  oy="0.027" lo="-0.5"  up="0.8" mult="-1.0"/>
+  <xacro:mimic_joint name="gripper_right3_to_gripper_right1" parent="gripper_right3" child="gripper_right1" ox="0.027" oy="0.016" lo="-0.5"  up="0.5" mult="1.0"/>
+
+  <!-- ros2_control：手臂 6 关节 + 夹爪主动关节接受位置指令；mimic 关节只发状态 -->
+  <ros2_control name="mecharm_system" type="system">
+    <hardware>
+      <plugin>gz_ros2_control/GazeboSimSystem</plugin>
+    </hardware>
+    <xacro:macro name="ctrl_joint" params="name">
+      <joint name="${name}">
+        <command_interface name="position"/>
+        <state_interface name="position"/>
+        <state_interface name="velocity"/>
+      </joint>
+    </xacro:macro>
+    <xacro:ctrl_joint name="joint1_to_base"/>
+    <xacro:ctrl_joint name="joint2_to_joint1"/>
+    <xacro:ctrl_joint name="joint3_to_joint2"/>
+    <xacro:ctrl_joint name="joint4_to_joint3"/>
+    <xacro:ctrl_joint name="joint5_to_joint4"/>
+    <xacro:ctrl_joint name="joint6_to_joint5"/>
+    <xacro:ctrl_joint name="gripper_controller"/>
+    <!-- mimic 从动关节必须登记（automaticaddison 的写法），否则 Gazebo
+         把它们当自由关节，夹爪连杆会被重力甩散 -->
+    <xacro:macro name="mimic_ctrl" params="name mult">
+      <joint name="${name}">
+        <param name="mimic">gripper_controller</param>
+        <param name="multiplier">${mult}</param>
+        <state_interface name="position"/>
+        <state_interface name="velocity"/>
+      </joint>
+    </xacro:macro>
+    <xacro:mimic_ctrl name="gripper_base_to_gripper_left2"    mult="1.0"/>
+    <xacro:mimic_ctrl name="gripper_left3_to_gripper_left1"   mult="-1.0"/>
+    <xacro:mimic_ctrl name="gripper_base_to_gripper_right3"   mult="-1.0"/>
+    <xacro:mimic_ctrl name="gripper_base_to_gripper_right2"   mult="-1.0"/>
+    <xacro:mimic_ctrl name="gripper_right3_to_gripper_right1" mult="1.0"/>
+  </ros2_control>
+
+  <!-- 指垫高摩擦：物理抓取靠指面摩擦力提起物体（μ=2.0，黑胶垫量级） -->
+  <gazebo reference="gripper_left1"><mu1>2.0</mu1><mu2>2.0</mu2></gazebo>
+  <gazebo reference="gripper_right1"><mu1>2.0</mu1><mu2>2.0</mu2></gazebo>
+
+  <gazebo>
+    <plugin filename="libgz_ros2_control-system.so" name="gz_ros2_control::GazeboSimROS2ControlPlugin">
+      <parameters>$(arg controllers_file)</parameters>
+    </plugin>
+  </gazebo>
+</robot>

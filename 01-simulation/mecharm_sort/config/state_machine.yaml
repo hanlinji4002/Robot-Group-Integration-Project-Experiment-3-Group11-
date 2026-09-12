@@ -1,0 +1,31 @@
+# 【讲解】任务状态机配置（验收提交材料："BehaviorTree XML 或状态机配置文件"）。
+# task_manager 启动时读取：每个状态执行完返回一个结果标签，在 states 里查"该状态 + 该结果 → 下一状态"。
+# 改流程（例如夹取失败直接放弃、不重试）只改这里，不用改代码。
+#
+#   INIT ──ok──▶ PARK ──ok──▶ SCAN ──ok──▶ SELECT ──ok──▶ PICK_PLACE ──ok──▶ SCAN（循环直到没有目标）
+#     │            │            │            └─none──▶ FINISH         └─fail──▶ HANDLE_FAIL ─retry─▶ PICK_PLACE
+#     └fail▶ABORT  └fail▶ABORT  └fail▶ABORT                                        ├─skip──▶ SCAN
+#                                                                                   └─abort─▶ ABORT
+initial: INIT
+terminal: [FINISH, ABORT]
+
+settings:
+  max_attempts: 2        # 同一网格夹取失败最多尝试次数（第 2 次仍失败则跳过）
+  max_cycles: 30         # 抓取轮次上限（防止死循环；老师中途会往网格里补方块，留够余量）
+  retry_passes: 1        # 1→6 全部处理完后，对夹取失败的格再补抓几轮（未识别/不可达的不补）
+  scan_frames: 5         # 每次扫描累计的识别帧数（多帧投票，抗抖动）
+  scan_settle_sec: 2.0   # 机械臂回零到位后再等这么久（画面稳定、人手离开）才开始收帧
+  min_score: 0.5         # 低于该置信度视为"未识别"
+  min_vote_ratio: 0.5    # 同一格同一类别至少在这么多比例的帧里出现，否则视为不稳定
+  scan_max_retries: 5    # 画面里找不到网格定位码时最多重试次数（相机被挡/没对准），超过则安全停止
+  scan_retry_wait_sec: 2.0
+
+states:
+  INIT:         {ok: PARK,       fail: ABORT}        # 等动作服务器、相机内参、识别结果
+  PARK:         {ok: SCAN,       fail: ABORT}        # 机械臂回零（相机装在侧上方，回零姿态不遮挡网格）
+  SCAN:         {ok: SELECT,     retry: SCAN, fail: ABORT}   # 先定位网格(ArUco)再多帧识别；找不到网格→等一下重扫
+  SELECT:       {ok: PICK_PLACE, none: FINISH}       # 选第一个可执行目标；空格/未识别记异常并跳过
+  PICK_PLACE:   {ok: SCAN,       fail: HANDLE_FAIL}  # 调 /pick_place 动作；成功后重新扫描
+  HANDLE_FAIL:  {retry: PICK_PLACE, skip: SCAN, abort: ABORT}  # 不可达→跳过；夹空→重试/跳过；故障→安全停止
+  FINISH:       {}                                   # 写 summary.txt，退出
+  ABORT:        {}                                   # 回安全位、写 summary.txt，退出

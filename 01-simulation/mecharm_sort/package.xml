@@ -1,0 +1,38 @@
+<?xml version="1.0"?>
+<!--
+【讲解】实验三主功能包。纯 Python（ament_python）。
+依赖：rclpy 写节点；vision_msgs 识别接口；sensor_msgs 图像；cv_bridge/python3-opencv 颜色分割；
+control_msgs/trajectory_msgs 轨迹动作；tf2_msgs 仿真真值桥接；mecharm_sort_interfaces 自定义 PickPlace 动作；
+xacro/robot_state_publisher/controller_manager/ros_gz_* 仿真启动；mycobot_description 厂商模型网格。
+-->
+<package format="3">
+  <name>mecharm_sort</name>
+  <version>0.1.0</version>
+  <description>桌面物体自动分类整理：仿真相机 → 颜色识别 → 网格判断 → PickPlace 动作 → 状态机任务控制</description>
+  <maintainer email="1990292743abc@gmail.com">robotic-group</maintainer>
+  <license>MIT</license>
+
+  <exec_depend>rclpy</exec_depend>
+  <exec_depend>mecharm_sort_interfaces</exec_depend>
+  <exec_depend>vision_msgs</exec_depend>
+  <exec_depend>sensor_msgs</exec_depend>
+  <exec_depend>std_msgs</exec_depend>
+  <exec_depend>tf2_msgs</exec_depend>
+  <exec_depend>control_msgs</exec_depend>
+  <exec_depend>trajectory_msgs</exec_depend>
+  <exec_depend>cv_bridge</exec_depend>
+  <exec_depend>python3-opencv</exec_depend>
+  <exec_depend>python3-numpy</exec_depend>
+  <exec_depend>python3-yaml</exec_depend>
+  <exec_depend>xacro</exec_depend>
+  <exec_depend>robot_state_publisher</exec_depend>
+  <exec_depend>controller_manager</exec_depend>
+  <exec_depend>joint_trajectory_controller</exec_depend>
+  <exec_depend>joint_state_broadcaster</exec_depend>
+  <exec_depend>gz_ros2_control</exec_depend>
+  <exec_depend>ros_gz_bridge</exec_depend>
+  <exec_depend>ros_gz_sim</exec_depend>
+  <exec_depend>mycobot_description</exec_depend>
+
+  <export><build_type>ament_python</build_type></export>
+</package>

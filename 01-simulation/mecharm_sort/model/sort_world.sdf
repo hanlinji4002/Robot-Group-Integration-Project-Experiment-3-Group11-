@@ -1,0 +1,167 @@
+<?xml version="1.0"?>
+<!--
+【讲解】桌面物体自动分类整理 仿真世界（normal 场景）。由 model/gen_world.py 从 config/grid.yaml 自动生成，不要手改，改 yaml 再生成。
+- 系统插件：Physics 物理、SceneBroadcaster 场景广播、UserCommands 用户命令、Sensors 传感器（俯视相机渲染，ogre2）。
+- table：灰色桌面（高 0.75 m）；识别节点靠"高饱和度"分前景，桌面必须是低饱和的灰色。
+- grid_marks：3×2 连成一片的网格黑线（只有视觉，无碰撞），格子中心坐标与 grid.yaml 一致。
+- aruco_0..3：网格四角的 ArUco 定位码贴片，任务节点靠它们每次扫描时自动算像素→桌面映射（相机可任意摆放）。
+- cube_N：25 mm 方块；真值统一走 /world/sort_world/dynamic_pose/info 桥接（不用逐个加 OdometryPublisher）。
+- top_camera：俯视相机，位姿与 grid.yaml 的 camera 一致，发布 camera/image_raw 与 camera/camera_info。
+-->
+<sdf version="1.8">
+  <world name="sort_world">
+    <physics name="default" type="ignored">
+      <max_step_size>0.004</max_step_size>
+      <real_time_factor>1.0</real_time_factor>
+    </physics>
+    <plugin filename="libignition-gazebo-physics-system.so" name="ignition::gazebo::systems::Physics"/>
+    <plugin filename="libignition-gazebo-scene-broadcaster-system.so" name="ignition::gazebo::systems::SceneBroadcaster"/>
+    <plugin filename="libignition-gazebo-user-commands-system.so" name="ignition::gazebo::systems::UserCommands"/>
+    <plugin filename="libignition-gazebo-sensors-system.so" name="ignition::gazebo::systems::Sensors">
+      <render_engine>ogre2</render_engine>
+    </plugin>
+    <scene><ambient>0.55 0.55 0.55 1</ambient><background>0.72 0.72 0.72 1</background><shadows>false</shadows></scene>
+    <light type="directional" name="sun">
+      <cast_shadows>false</cast_shadows>
+      <pose>0 0 10 0 0 0</pose>
+      <diffuse>0.8 0.8 0.8 1</diffuse>
+      <specular>0.1 0.1 0.1 1</specular>
+      <direction>-0.1 0.1 -0.98</direction>
+    </light>
+
+    <model name="ground">
+      <static>true</static>
+      <link name="ground_link">
+        <collision name="c"><geometry><plane><normal>0 0 1</normal><size>10 10</size></plane></geometry></collision>
+        <visual name="v"><geometry><plane><normal>0 0 1</normal><size>10 10</size></plane></geometry><material><ambient>0.5 0.5 0.5 1</ambient><diffuse>0.5 0.5 0.5 1</diffuse></material></visual>
+      </link>
+    </model>
+
+    <!-- 桌子：灰色实心块，桌面高 0.75 m，机器人生成在桌面 (0,0,0.75) -->
+    <model name="table">
+      <static>true</static>
+      <pose>0.1 0 0.375 0 0 0</pose>
+      <link name="table_link">
+        <collision name="table_c"><pose>0 0 0 0 0 0</pose><geometry><box><size>0.9 0.7 0.75</size></box></geometry><surface><friction><ode><mu>1.0</mu><mu2>1.0</mu2></ode></friction></surface></collision><visual name="table"><pose>0 0 0 0 0 0</pose><geometry><box><size>0.9 0.7 0.75</size></box></geometry><material><ambient>0.78 0.78 0.78 1</ambient><diffuse>0.78 0.78 0.78 1</diffuse></material></visual>
+      </link>
+    </model>
+    <!-- 取物网格描边（3×2 连成一片，坐标同 grid.yaml） -->
+    <model name="grid_marks"><static>true</static><link name="l">
+      <visual name="cell1_l0"><pose>0.105 0.09 0.7503 0 0 0</pose><geometry><box><size>0.05 0.002 0.0006</size></box></geometry><material><ambient>0.12 0.12 0.12 1</ambient><diffuse>0.12 0.12 0.12 1</diffuse></material></visual>
+      <visual name="cell1_l1"><pose>0.105 0.03 0.7503 0 0 0</pose><geometry><box><size>0.05 0.002 0.0006</size></box></geometry><material><ambient>0.12 0.12 0.12 1</ambient><diffuse>0.12 0.12 0.12 1</diffuse></material></visual>
+      <visual name="cell1_l2"><pose>0.13 0.06 0.7503 0 0 0</pose><geometry><box><size>0.002 0.06 0.0006</size></box></geometry><material><ambient>0.12 0.12 0.12 1</ambient><diffuse>0.12 0.12 0.12 1</diffuse></material></visual>
+      <visual name="cell1_l3"><pose>0.07999999999999999 0.06 0.7503 0 0 0</pose><geometry><box><size>0.002 0.06 0.0006</size></box></geometry><material><ambient>0.12 0.12 0.12 1</ambient><diffuse>0.12 0.12 0.12 1</diffuse></material></visual>
+      <visual name="cell2_l0"><pose>0.105 0.03 0.7503 0 0 0</pose><geometry><box><size>0.05 0.002 0.0006</size></box></geometry><material><ambient>0.12 0.12 0.12 1</ambient><diffuse>0.12 0.12 0.12 1</diffuse></material></visual>
+      <visual name="cell2_l1"><pose>0.105 -0.03 0.7503 0 0 0</pose><geometry><box><size>0.05 0.002 0.0006</size></box></geometry><material><ambient>0.12 0.12 0.12 1</ambient><diffuse>0.12 0.12 0.12 1</diffuse></material></visual>
+      <visual name="cell2_l2"><pose>0.13 0.0 0.7503 0 0 0</pose><geometry><box><size>0.002 0.06 0.0006</size></box></geometry><material><ambient>0.12 0.12 0.12 1</ambient><diffuse>0.12 0.12 0.12 1</diffuse></material></visual>
+      <visual name="cell2_l3"><pose>0.07999999999999999 0.0 0.7503 0 0 0</pose><geometry><box><size>0.002 0.06 0.0006</size></box></geometry><material><ambient>0.12 0.12 0.12 1</ambient><diffuse>0.12 0.12 0.12 1</diffuse></material></visual>
+      <visual name="cell3_l0"><pose>0.105 -0.03 0.7503 0 0 0</pose><geometry><box><size>0.05 0.002 0.0006</size></box></geometry><material><ambient>0.12 0.12 0.12 1</ambient><diffuse>0.12 0.12 0.12 1</diffuse></material></visual>
+      <visual name="cell3_l1"><pose>0.105 -0.09 0.7503 0 0 0</pose><geometry><box><size>0.05 0.002 0.0006</size></box></geometry><material><ambient>0.12 0.12 0.12 1</ambient><diffuse>0.12 0.12 0.12 1</diffuse></material></visual>
+      <visual name="cell3_l2"><pose>0.13 -0.06 0.7503 0 0 0</pose><geometry><box><size>0.002 0.06 0.0006</size></box></geometry><material><ambient>0.12 0.12 0.12 1</ambient><diffuse>0.12 0.12 0.12 1</diffuse></material></visual>
+      <visual name="cell3_l3"><pose>0.07999999999999999 -0.06 0.7503 0 0 0</pose><geometry><box><size>0.002 0.06 0.0006</size></box></geometry><material><ambient>0.12 0.12 0.12 1</ambient><diffuse>0.12 0.12 0.12 1</diffuse></material></visual>
+      <visual name="cell4_l0"><pose>0.155 0.09 0.7503 0 0 0</pose><geometry><box><size>0.05 0.002 0.0006</size></box></geometry><material><ambient>0.12 0.12 0.12 1</ambient><diffuse>0.12 0.12 0.12 1</diffuse></material></visual>
+      <visual name="cell4_l1"><pose>0.155 0.03 0.7503 0 0 0</pose><geometry><box><size>0.05 0.002 0.0006</size></box></geometry><material><ambient>0.12 0.12 0.12 1</ambient><diffuse>0.12 0.12 0.12 1</diffuse></material></visual>
+      <visual name="cell4_l2"><pose>0.18 0.06 0.7503 0 0 0</pose><geometry><box><size>0.002 0.06 0.0006</size></box></geometry><material><ambient>0.12 0.12 0.12 1</ambient><diffuse>0.12 0.12 0.12 1</diffuse></material></visual>
+      <visual name="cell4_l3"><pose>0.13 0.06 0.7503 0 0 0</pose><geometry><box><size>0.002 0.06 0.0006</size></box></geometry><material><ambient>0.12 0.12 0.12 1</ambient><diffuse>0.12 0.12 0.12 1</diffuse></material></visual>
+      <visual name="cell5_l0"><pose>0.155 0.03 0.7503 0 0 0</pose><geometry><box><size>0.05 0.002 0.0006</size></box></geometry><material><ambient>0.12 0.12 0.12 1</ambient><diffuse>0.12 0.12 0.12 1</diffuse></material></visual>
+      <visual name="cell5_l1"><pose>0.155 -0.03 0.7503 0 0 0</pose><geometry><box><size>0.05 0.002 0.0006</size></box></geometry><material><ambient>0.12 0.12 0.12 1</ambient><diffuse>0.12 0.12 0.12 1</diffuse></material></visual>
+      <visual name="cell5_l2"><pose>0.18 0.0 0.7503 0 0 0</pose><geometry><box><size>0.002 0.06 0.0006</size></box></geometry><material><ambient>0.12 0.12 0.12 1</ambient><diffuse>0.12 0.12 0.12 1</diffuse></material></visual>
+      <visual name="cell5_l3"><pose>0.13 0.0 0.7503 0 0 0</pose><geometry><box><size>0.002 0.06 0.0006</size></box></geometry><material><ambient>0.12 0.12 0.12 1</ambient><diffuse>0.12 0.12 0.12 1</diffuse></material></visual>
+      <visual name="cell6_l0"><pose>0.155 -0.03 0.7503 0 0 0</pose><geometry><box><size>0.05 0.002 0.0006</size></box></geometry><material><ambient>0.12 0.12 0.12 1</ambient><diffuse>0.12 0.12 0.12 1</diffuse></material></visual>
+      <visual name="cell6_l1"><pose>0.155 -0.09 0.7503 0 0 0</pose><geometry><box><size>0.05 0.002 0.0006</size></box></geometry><material><ambient>0.12 0.12 0.12 1</ambient><diffuse>0.12 0.12 0.12 1</diffuse></material></visual>
+      <visual name="cell6_l2"><pose>0.18 -0.06 0.7503 0 0 0</pose><geometry><box><size>0.002 0.06 0.0006</size></box></geometry><material><ambient>0.12 0.12 0.12 1</ambient><diffuse>0.12 0.12 0.12 1</diffuse></material></visual>
+      <visual name="cell6_l3"><pose>0.13 -0.06 0.7503 0 0 0</pose><geometry><box><size>0.002 0.06 0.0006</size></box></geometry><material><ambient>0.12 0.12 0.12 1</ambient><diffuse>0.12 0.12 0.12 1</diffuse></material></visual>
+    </link></model>
+    <model name="aruco_0"><static>true</static><pose>0.06 0.075 0.7504 0 0 0</pose><link name="l">
+      <visual name="v"><geometry><box><size>0.043750000000000004 0.043750000000000004 0.0008</size></box></geometry>
+        <material><ambient>1 1 1 1</ambient><diffuse>1 1 1 1</diffuse><specular>0 0 0 1</specular>
+          <pbr><metal><albedo_map>model://mecharm_sort/markers/aruco_0.png</albedo_map><roughness>1.0</roughness><metalness>0.0</metalness></metal></pbr>
+        </material></visual>
+    </link></model>
+    <model name="aruco_1"><static>true</static><pose>0.06 -0.075 0.7504 0 0 0</pose><link name="l">
+      <visual name="v"><geometry><box><size>0.043750000000000004 0.043750000000000004 0.0008</size></box></geometry>
+        <material><ambient>1 1 1 1</ambient><diffuse>1 1 1 1</diffuse><specular>0 0 0 1</specular>
+          <pbr><metal><albedo_map>model://mecharm_sort/markers/aruco_1.png</albedo_map><roughness>1.0</roughness><metalness>0.0</metalness></metal></pbr>
+        </material></visual>
+    </link></model>
+    <model name="aruco_2"><static>true</static><pose>0.205 0.075 0.7504 0 0 0</pose><link name="l">
+      <visual name="v"><geometry><box><size>0.043750000000000004 0.043750000000000004 0.0008</size></box></geometry>
+        <material><ambient>1 1 1 1</ambient><diffuse>1 1 1 1</diffuse><specular>0 0 0 1</specular>
+          <pbr><metal><albedo_map>model://mecharm_sort/markers/aruco_2.png</albedo_map><roughness>1.0</roughness><metalness>0.0</metalness></metal></pbr>
+        </material></visual>
+    </link></model>
+    <model name="aruco_3"><static>true</static><pose>0.205 -0.075 0.7504 0 0 0</pose><link name="l">
+      <visual name="v"><geometry><box><size>0.043750000000000004 0.043750000000000004 0.0008</size></box></geometry>
+        <material><ambient>1 1 1 1</ambient><diffuse>1 1 1 1</diffuse><specular>0 0 0 1</specular>
+          <pbr><metal><albedo_map>model://mecharm_sort/markers/aruco_3.png</albedo_map><roughness>1.0</roughness><metalness>0.0</metalness></metal></pbr>
+        </material></visual>
+    </link></model>
+    <!-- 方块 cube_1：green，初始在 1 号格 -->
+    <model name="cube_1">
+      <pose>0.105 0.06 0.7635 0 0 0</pose>
+      <link name="body">
+        <inertial><mass>0.05</mass><inertia><ixx>5.2e-6</ixx><iyy>5.2e-6</iyy><izz>5.2e-6</izz><ixy>0</ixy><ixz>0</ixz><iyz>0</iyz></inertia></inertial>
+        <collision name="cube_c"><pose>0 0 0 0 0 0</pose><geometry><box><size>0.025 0.025 0.025</size></box></geometry><surface><friction><ode><mu>2.0</mu><mu2>2.0</mu2></ode></friction></surface></collision><visual name="cube"><pose>0 0 0 0 0 0</pose><geometry><box><size>0.025 0.025 0.025</size></box></geometry><material><ambient>0.1 0.7 0.15 1</ambient><diffuse>0.1 0.7 0.15 1</diffuse></material></visual>
+      </link>
+    </model>
+    <!-- 方块 cube_2：red，初始在 2 号格 -->
+    <model name="cube_2">
+      <pose>0.105 0.0 0.7635 0 0 0</pose>
+      <link name="body">
+        <inertial><mass>0.05</mass><inertia><ixx>5.2e-6</ixx><iyy>5.2e-6</iyy><izz>5.2e-6</izz><ixy>0</ixy><ixz>0</ixz><iyz>0</iyz></inertia></inertial>
+        <collision name="cube_c"><pose>0 0 0 0 0 0</pose><geometry><box><size>0.025 0.025 0.025</size></box></geometry><surface><friction><ode><mu>2.0</mu><mu2>2.0</mu2></ode></friction></surface></collision><visual name="cube"><pose>0 0 0 0 0 0</pose><geometry><box><size>0.025 0.025 0.025</size></box></geometry><material><ambient>0.85 0.1 0.1 1</ambient><diffuse>0.85 0.1 0.1 1</diffuse></material></visual>
+      </link>
+    </model>
+    <!-- 方块 cube_3：blue，初始在 3 号格 -->
+    <model name="cube_3">
+      <pose>0.105 -0.06 0.7635 0 0 0</pose>
+      <link name="body">
+        <inertial><mass>0.05</mass><inertia><ixx>5.2e-6</ixx><iyy>5.2e-6</iyy><izz>5.2e-6</izz><ixy>0</ixy><ixz>0</ixz><iyz>0</iyz></inertia></inertial>
+        <collision name="cube_c"><pose>0 0 0 0 0 0</pose><geometry><box><size>0.025 0.025 0.025</size></box></geometry><surface><friction><ode><mu>2.0</mu><mu2>2.0</mu2></ode></friction></surface></collision><visual name="cube"><pose>0 0 0 0 0 0</pose><geometry><box><size>0.025 0.025 0.025</size></box></geometry><material><ambient>0.1 0.2 0.85 1</ambient><diffuse>0.1 0.2 0.85 1</diffuse></material></visual>
+      </link>
+    </model>
+    <!-- 方块 cube_4：blue，初始在 4 号格 -->
+    <model name="cube_4">
+      <pose>0.155 0.06 0.7635 0 0 0</pose>
+      <link name="body">
+        <inertial><mass>0.05</mass><inertia><ixx>5.2e-6</ixx><iyy>5.2e-6</iyy><izz>5.2e-6</izz><ixy>0</ixy><ixz>0</ixz><iyz>0</iyz></inertia></inertial>
+        <collision name="cube_c"><pose>0 0 0 0 0 0</pose><geometry><box><size>0.025 0.025 0.025</size></box></geometry><surface><friction><ode><mu>2.0</mu><mu2>2.0</mu2></ode></friction></surface></collision><visual name="cube"><pose>0 0 0 0 0 0</pose><geometry><box><size>0.025 0.025 0.025</size></box></geometry><material><ambient>0.1 0.2 0.85 1</ambient><diffuse>0.1 0.2 0.85 1</diffuse></material></visual>
+      </link>
+    </model>
+    <!-- 方块 cube_5：green，初始在 5 号格 -->
+    <model name="cube_5">
+      <pose>0.155 0.0 0.7635 0 0 0</pose>
+      <link name="body">
+        <inertial><mass>0.05</mass><inertia><ixx>5.2e-6</ixx><iyy>5.2e-6</iyy><izz>5.2e-6</izz><ixy>0</ixy><ixz>0</ixz><iyz>0</iyz></inertia></inertial>
+        <collision name="cube_c"><pose>0 0 0 0 0 0</pose><geometry><box><size>0.025 0.025 0.025</size></box></geometry><surface><friction><ode><mu>2.0</mu><mu2>2.0</mu2></ode></friction></surface></collision><visual name="cube"><pose>0 0 0 0 0 0</pose><geometry><box><size>0.025 0.025 0.025</size></box></geometry><material><ambient>0.1 0.7 0.15 1</ambient><diffuse>0.1 0.7 0.15 1</diffuse></material></visual>
+      </link>
+    </model>
+    <!-- 方块 cube_6：red，初始在 6 号格 -->
+    <model name="cube_6">
+      <pose>0.155 -0.06 0.7635 0 0 0</pose>
+      <link name="body">
+        <inertial><mass>0.05</mass><inertia><ixx>5.2e-6</ixx><iyy>5.2e-6</iyy><izz>5.2e-6</izz><ixy>0</ixy><ixz>0</ixz><iyz>0</iyz></inertia></inertial>
+        <collision name="cube_c"><pose>0 0 0 0 0 0</pose><geometry><box><size>0.025 0.025 0.025</size></box></geometry><surface><friction><ode><mu>2.0</mu><mu2>2.0</mu2></ode></friction></surface></collision><visual name="cube"><pose>0 0 0 0 0 0</pose><geometry><box><size>0.025 0.025 0.025</size></box></geometry><material><ambient>0.85 0.1 0.1 1</ambient><diffuse>0.85 0.1 0.1 1</diffuse></material></visual>
+      </link>
+    </model>
+    <!-- 俯视相机：位姿同 grid.yaml camera（桌面左侧上方斜向下对准网格中心），10 Hz 1280x720（与真机 USB 相机相同），水平视场 1.0 rad -->
+    <model name="top_camera">
+      <static>true</static>
+      <pose>0.12 0.35 1.3 -1.5708 1.0041 -1.5708</pose>
+      <link name="link">
+        <visual name="body"><pose>-0.02 0 0 0 0 0</pose><geometry><box><size>0.04 0.03 0.03</size></box></geometry><material><ambient>0.15 0.15 0.15 1</ambient><diffuse>0.15 0.15 0.15 1</diffuse></material></visual>
+        <sensor name="camera" type="camera">
+          <camera>
+            <horizontal_fov>1.0</horizontal_fov>
+            <image><width>1280</width><height>720</height><format>R8G8B8</format></image>
+            <clip><near>0.05</near><far>5.0</far></clip>
+          </camera>
+          <always_on>1</always_on>
+          <update_rate>10</update_rate>
+          <visualize>false</visualize>
+          <topic>camera/image_raw</topic>
+        </sensor>
+      </link>
+    </model>
+  </world>
+</sdf>

@@ -1,0 +1,50 @@
+# 【讲解】三个自研节点的参数（ROS 参数文件，顶层 key = 节点名）。grid_config / state_machine_config / log_dir 由 launch 传入。
+# 识别节点：颜色分割阈值
+color_detector:
+  ros__parameters:
+    use_sim_time: true
+    image_topic: /camera/image_raw
+    detections_topic: /detections
+    debug_image_topic: /detections/image
+    min_saturation: 110      # HSV 饱和度阈值：桌面(灰)/机械臂(白黑)/料盒(浅色)都在此之下
+    min_value: 60
+    min_area: 150            # 连通域面积范围（像素）：25 mm 方块在 1280x720 画面里约 1500-2500 px
+    max_area: 12000
+    min_purity: 0.6          # 主色相占比低于 0.6 → unknown
+    record_fps: 10.0
+
+# 抓取动作服务器：运动参数（沿用实验二在 Jetson 上实测过的取值）
+pick_place_server:
+  ros__parameters:
+    use_sim_time: true
+    tool_tip_offset: 0.063   # 虎口中心相对 gripper_base 的距离
+    safe_height: 0.05        # 取物点上方高度（相对方块中心）
+    transit_height: 0.08     # 抓起后先抬到这个高度再横移去料盒
+    place_height: 0.008      # 放置高度（相对方块中心）：方块底离桌面几毫米时才松爪，不是半空扔下（沿用实验二的 +8 mm）
+    place_above: 0.05        # 放置点上方高度
+    pick_tilt: 0.26          # 抓取姿态允许倾角 |axis-down|（≈15°）
+    place_tilt: 0.26         # 放置姿态允许倾角（≈15°）：夹着方块时工具必须基本竖直，倾斜 40° 时方块会从指间滑出（曾出现松爪前掉落）
+    transit_tilt: 0.26       # 过渡/横移姿态允许倾角，同上
+    jaw_axis: 'y'            # 虎口沿世界 y 轴开合（相邻格 y 间距大，不碰邻格）
+    gripper_open: 0.0
+    gripper_close: -0.44     # 25 mm 方块的有效夹持角（实验二实测）
+    move_duration: 2.0
+    grip_duration: 1.2
+    home_pose_deg: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]     # 回零姿态 = 六关节全零（大臂竖直、小臂水平向前，与实验二/真机一致）；每轮开始和结束都回这里，扫描也在这里做
+    grasp_check: sim_pose    # 仿真：用真值判断物体是否被抬起；真机改 gripper
+    lift_check_dz: 0.02
+    inject_grasp_fail_grids: [0]   # 异常测试：launch 里 scenario:=abnormal 时改为 [1]
+    inject_grasp_fail_times: 1
+
+# 任务状态机
+task_manager:
+  ros__parameters:
+    use_sim_time: true
+    object_classes: [green, red, blue]
+    object_zones:   [left,  front, right]   # 绿→网格左侧空区，红→网格前方空区（移出网格区），蓝→网格右侧空区
+    detections_topic: /detections
+    camera_info_topic: /camera/camera_info
+    debug_image_topic: /detections/image
+    sim_check: true          # 仿真：用真值核对落点；真机改 false
+    camera_hfov_deg: 57.3    # 仿真相机 hfov 1.0 rad
+    object_center_height: 0.018

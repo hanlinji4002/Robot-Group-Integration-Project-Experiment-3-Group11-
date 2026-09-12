@@ -1,0 +1,16 @@
+<?xml version="1.0"?>
+<!-- 【讲解】实验三接口包：定义抓取动作 PickPlace。build_type 为 ament_cmake，因为要跑 rosidl 代码生成。 -->
+<package format="3">
+  <name>mecharm_sort_interfaces</name>
+  <version>0.1.0</version>
+  <description>桌面物体自动分类整理：抓取动作接口（PickPlace.action）</description>
+  <maintainer email="1990292743abc@gmail.com">robotic-group</maintainer>
+  <license>MIT</license>
+
+  <buildtool_depend>ament_cmake</buildtool_depend>
+  <buildtool_depend>rosidl_default_generators</buildtool_depend>
+  <exec_depend>rosidl_default_runtime</exec_depend>
+  <member_of_group>rosidl_interface_packages</member_of_group>
+
+  <export><build_type>ament_cmake</build_type></export>
+</package>

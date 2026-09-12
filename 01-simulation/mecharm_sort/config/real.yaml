@@ -1,0 +1,65 @@
+# 【讲解】真机参数（Jetson + mechArm 270 + USB 相机）。与仿真 sort.yaml 的差别：use_sim_time 关、sim_check 关、
+# 识别换 YOLO、网格定位用 ArUco、抓取用示教回放、夹取校验交给驱动读夹爪值。改这里不用重新编译。
+usb_camera:
+  ros__parameters:
+    device: 0
+    width: 1280
+    height: 720
+    fps: 15.0
+    fourcc: MJPG
+    rotate_180: false
+
+yolo_detector:
+  ros__parameters:
+    model_path: ~/Desktop/yingjiehua/best.pt     # 类别 blue_cube / green_cube / red_cube / yellow_cube
+    conf: 0.5
+    iou: 0.5
+    imgsz: 640
+    device: '0'
+    half: true                                   # FP16
+    debug_scale: 0.5                             # 调试图缩一半，看图更流畅
+    debug_every: 2
+    class_map: ['']                              # 空 = 自动去掉 _cube 后缀 → blue/green/red/yellow
+    # 想用 TensorRT 引擎：model_path 改成 ~/Desktop/yingjiehua/best.engine（在 Jetson 本机 yolo export 生成），其余不变
+
+pick_place_server:
+  ros__parameters:
+    use_sim_time: false
+    use_taught_joints: true                      # 真机：回放示教关节角，不做逆解
+    lift_deg: 12.0                               # 抓起后抬升：示教点 J2 往回收 12°（约 4 cm；曾用 25° 举太高，夹爪发热后会掉）
+    transit_lift_deg: 18.0                       # 横移高度：J2 往回收 18°（约 5-6 cm，方块底高于邻格方块顶）
+    drop_in_air: true                            # 放置点教在空中，到点直接松爪扔下（人随手拿走），每种颜色 1 个点
+    gripper_open: 0.0
+    gripper_close: -0.44
+    move_duration: 2.0                           # 每段动作秒数（launch 参数 move_duration:= 可覆盖；首次调试用 4.0）
+    grip_duration: 1.5
+    home_pose_deg: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+    grasp_check: none                            # 夹空由驱动读夹爪值判定（合爪动作直接失败 → 任务节点重试）
+    inject_grasp_fail_grids: [0]
+
+task_manager:
+  ros__parameters:
+    use_sim_time: false
+    object_classes: [green, red, blue]
+    object_zones:   [left,  front, right]
+    grid_mode: aruco                             # 每次扫描从画面里的 4 个 ArUco 码算像素→桌面映射
+    min_markers: 3
+    max_grid_residual: 0.012
+    camera_hfov_deg: 65.0                        # USB 相机水平视场角（大概即可），用于视差修正
+    object_center_height: 0.018                  # 检测框中心离桌面的高度（25 mm 方块约 18 mm）
+    sim_check: false                             # 没有真值，落点由现场核对
+
+mecharm_real_driver:
+  ros__parameters:
+    arm_host: "10.42.0.89"                       # 臂内 arm_server 地址（实验二配置）
+    arm_port: 9001
+    max_speed: 40                                # 驱动速度百分比上限（launch 参数 max_speed:= 可覆盖；首次调试用 20）
+    state_rate: 10.0
+    goal_tol_deg: 3.0
+    joint_signs: [1.0, 1.0, 1.0, 1.0, 1.0, 1.0]
+    joint_offsets_deg: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+    gripper_open_rad: 0.0
+    gripper_close_rad: -0.44
+    grip_hold_min: 20
+    grip_hold_max: 60
+    open_min: 80

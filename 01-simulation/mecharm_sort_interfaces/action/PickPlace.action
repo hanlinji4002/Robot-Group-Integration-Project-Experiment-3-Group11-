@@ -1,0 +1,17 @@
+# 【讲解】抓取动作接口（ROS 2 Action，验收要求"可反馈的长时间任务接口"）。
+# 任务节点只发"网格编号 + 分类区域编号 + 槽位"，机械臂端按网格编号调用固定点抓取程序（不要求任意位置抓取）。
+# command: "pick_place" 取物分类放置 | "park" 回到扫描/安全姿态 | "home" 回零
+string command
+int32 grid_id          # 取物网格编号（1-6），command=pick_place 时必填
+string object_class    # 物体类别（只用于日志）
+string zone_id         # 分类区域编号：left / front / right（网格左/前/右的空桌面）
+int32 slot             # 区域内第几个落点（同一区域多次放置时错开，避免叠放）
+---
+bool success
+string failed_stage    # 失败阶段：plan(不可达/超限) grasp_verify(夹空) controller(控制器) comm(通信) 空=成功
+string message
+float32 duration       # 执行耗时（s）
+---
+string stage           # 当前步骤名，如 "到达取物点上方"
+int32 step
+int32 total_steps

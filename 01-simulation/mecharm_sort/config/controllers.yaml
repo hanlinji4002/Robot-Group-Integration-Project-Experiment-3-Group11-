@@ -1,0 +1,52 @@
+# 【讲解】ros2_control 控制器配置（仿真里"关节怎么被驱动"）。
+# - controller_manager：控制周期 100 Hz，登记三个控制器。
+# - joint_state_broadcaster：把关节角发布到 /joint_states。
+# - arm_controller：六个手臂关节的轨迹控制器，接收任务节点发的 FollowJointTrajectory 动作；constraints 是到位判定的容差。
+# - hand_controller：夹爪关节的轨迹控制器。
+# 讲解要点：任务节点只认这两个控制器的名字，真机驱动也照这两个名字提供接口。
+# ros2_control 控制器配置。
+# update_rate 取 100Hz：软渲染容器里够用且省 CPU，真机 mechArm 串口带宽也到不了更高。
+controller_manager:
+  ros__parameters:
+    update_rate: 100
+    use_sim_time: true
+
+    joint_state_broadcaster:
+      type: joint_state_broadcaster/JointStateBroadcaster
+
+    arm_controller:
+      type: joint_trajectory_controller/JointTrajectoryController
+
+    hand_controller:
+      type: joint_trajectory_controller/JointTrajectoryController
+
+arm_controller:
+  ros__parameters:
+    joints:
+      - joint1_to_base
+      - joint2_to_joint1
+      - joint3_to_joint2
+      - joint4_to_joint3
+      - joint5_to_joint4
+      - joint6_to_joint5
+    command_interfaces: [position]
+    state_interfaces: [position, velocity]
+    # 轨迹执行到位判定放宽到 0.02rad：仿真位置环有稳态小误差，过严会误报超时
+    constraints:
+      stopped_velocity_tolerance: 0.05
+      goal_time: 2.0
+      joint1_to_base: {trajectory: 0.2, goal: 0.02}
+      joint2_to_joint1: {trajectory: 0.2, goal: 0.02}
+      joint3_to_joint2: {trajectory: 0.2, goal: 0.02}
+      joint4_to_joint3: {trajectory: 0.2, goal: 0.02}
+      joint5_to_joint4: {trajectory: 0.2, goal: 0.02}
+      joint6_to_joint5: {trajectory: 0.2, goal: 0.02}
+
+hand_controller:
+  ros__parameters:
+    joints: [gripper_controller]
+    command_interfaces: [position]
+    state_interfaces: [position, velocity]
+    constraints:
+      goal_time: 2.0
+      gripper_controller: {trajectory: 0.3, goal: 0.05}
