@@ -1,0 +1,67 @@
+# 【讲解】真机参数（验收时使用的版本）。上半段 grasp_task 是任务节点的参数，下半段 mecharm_real_driver 是驱动的参数。
+# 与仿真 grasp.yaml 的差别：use_sim_time/sim_check/sim_attach 关掉；use_taught_joints 打开并带示教关节角；alternate_direction 往返模式；
+# move_duration 放慢；驱动 max_speed 限 20。改这里不用重新编译。
+# 真机（Jetson + mechArm 270）定点抓取参数。
+# 任务节点与仿真共用同一个 ros_node.py，验收要求：切真机只改设备、通信和位置参数。
+grasp_task:
+  ros__parameters:
+    use_sim_time: false
+
+    # 真机以机械臂底座为原点（URDF 基座系）
+    base_pose_xyz: [0.0, 0.0, 0.0]
+
+    # 取物点 A / 放置点 B（基座系，m）。不要手填：
+    # 先 ros2 run mecharm_real teach a / b 示教，再 teach apply 自动换算写入。
+    # 下面两行是占位值（与仿真同一布局），只是让未示教前也能干跑。
+    point_a: [0.2329, 0.0936, 0.0145]
+    point_b: [0.2035, -0.1324, -0.0078]
+
+    # 示教回放（真机默认走这条）：直接回放示教关节角，不做逆解，不受"工具轴要竖直"的限制。
+    # 由 teach apply 自动填写并打开；改成 false 则退回用 point_a/point_b 逆解
+    use_taught_joints: true
+    at_a_joints_deg: [21.53, 42.36, 13.09, -2.54, -12.74, -0.26]
+    at_b_joints_deg: [-33.83, 46.31, 13.0, -5.18, -13.0, 0.61]
+    lift_deg: 25.0          # 上方点 = 示教点的 J2 往回收这么多度（垂直抬起）
+    place_lift_deg: 3.0     # 放置点比取物点少压这么多度（约 13 mm），松爪时手指不顶桌面
+
+    # 安全高度（m）
+    safe_height: 0.05
+
+    # 工具中心偏移：与仿真同值。示教点也用同一套正运动学换算，两边自洽。
+    tool_tip_offset: 0.063
+
+    # 夹爪开/合（rad）：任务节点发这个角，驱动按离谁近映射成 开/合 两态
+    gripper_open: 0.0
+    gripper_close: -0.44
+
+    # 真机放慢：单段轨迹 4s、夹爪 2s（配合驱动 max_speed 低速模式）
+    move_duration: 4.0
+    grip_duration: 2.0
+
+    cycles: 5
+    # 往返模式：奇数轮 A→B、偶数轮 B→A，物体不用人工放回；cycles=5 即 5 次抓取
+    alternate_direction: true
+    log_dir: "~/grasp_logs_real"
+
+    # 真机关键开关：不用 Gazebo 真值，吸附逻辑停用，落点由现场人工核对
+    sim_attach: false
+    sim_check: false
+    world_name: "none"
+
+mecharm_real_driver:
+  ros__parameters:
+    # 臂内 arm_server.py 的地址：Jetson 网口共享给臂时臂是 10.42.0.89
+    arm_host: "10.42.0.89"
+    arm_port: 9001
+    max_speed: 20          # 初次运行低速；验收稳定后可放宽
+    state_rate: 10.0
+    goal_tol_deg: 3.0      # 到位残差超过它判为失败
+    # 首次联机若某关节方向与仿真相反，把对应 sign 改成 -1（目前验证一致，保持 1）
+    joint_signs: [1.0, 1.0, 1.0, 1.0, 1.0, 1.0]
+    joint_offsets_deg: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+    gripper_open_rad: 0.0
+    gripper_close_rad: -0.44
+    # 合爪读值判定：夹住 25mm 方块≈43–45；<20 夹空、>60 被挡/夹偏 → 松开重夹一次，仍不行判失败
+    grip_hold_min: 20
+    grip_hold_max: 60
+    open_min: 80            # 张开不到这个值再张一次

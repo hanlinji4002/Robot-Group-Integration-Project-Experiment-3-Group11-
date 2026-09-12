@@ -1,0 +1,21 @@
+<?xml version="1.0"?>
+<!--
+【讲解】真机驱动包的"身份证"，包名 mecharm_real。依赖 rclpy、control_msgs 等 ROS 消息包，
+以及仿真包 mecharm_grasp（任务节点在那边）。build_type=ament_python。
+-->
+<package format="3">
+  <name>mecharm_real</name>
+  <version>0.1.0</version>
+  <description>mechArm 270 真机驱动：对任务节点提供与仿真相同的 ROS 2 接口，底层经 TCP 调用臂内 arm_server.py</description>
+  <maintainer email="1990292743abc@gmail.com">robotic-group</maintainer>
+  <license>MIT</license>
+
+  <exec_depend>rclpy</exec_depend>
+  <exec_depend>control_msgs</exec_depend>
+  <exec_depend>trajectory_msgs</exec_depend>
+  <exec_depend>sensor_msgs</exec_depend>
+  <exec_depend>std_msgs</exec_depend>
+  <exec_depend>mecharm_grasp</exec_depend>
+
+  <export><build_type>ament_python</build_type></export>
+</package>
