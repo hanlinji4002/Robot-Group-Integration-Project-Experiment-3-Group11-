@@ -1,0 +1,84 @@
+========================================
+实验三 真机流程 · 指令清单（Jetson 上操作）
+代码：Jetson ~/Desktop/exp3_sim_ws/src/{mecharm_sort, mecharm_sort_interfaces, mecharm_real}
+      （仓库 01-simulation/ 两个包 + 02-real-robot/mecharm_real；臂内文件在 02-real-robot/arm_pi）
+========================================
+
+【0. 接线】 Mac ──USB-C── Jetson(192.168.55.1) ──网线── 臂内树莓派(10.42.0.89)     USB 相机插 Jetson
+          Mac 连 Jetson: ssh nvidia@192.168.55.1        Jetson 连臂: ssh er@10.42.0.89
+
+【1. 贴网格纸】（只做一次；贴好后纸和机器人都不要再动）
+打印 01-simulation/mecharm_sort/config/grid_sheet_A4.pdf（A4 横向，100% 不缩放）
+纸下边中点那条短线对准机器人正前方，纸下边离底座中心 3.5 cm，四角用胶带贴死
+
+【2. 臂内起服务】（臂每次重启后都要做一次；在臂内 ssh er@10.42.0.89 执行）
+setsid python3 /home/er/arm_server.py > /home/er/arm_server.log 2>&1 < /dev/null & echo $! > /home/er/arm_server.pid
+tail -2 /home/er/arm_server.log          # 看到 "监听 0.0.0.0:9001"
+  停止：kill $(cat /home/er/arm_server.pid)
+  注意：服务开着时不能同时跑 armtest2.py / go_zero.py（抢串口）
+
+【3. Jetson 每开一个终端先加载环境】
+source /opt/ros/humble/setup.bash && source ~/mecharm_ws/install/setup.bash && source ~/Desktop/exp3_sim_ws/install/setup.bash
+
+【4. 示教 9 个点】（只做一次。变软时先用手扶住臂；提示"力矩已恢复，可以松手"再放手。
+  每个点记录后工具会低速回放一次验证机械臂真能走到，走不到会让你重教。不要用 --presim：真机 J5 方向与仿真不一致会把手腕带歪）
+ros2 run mecharm_sort teach_points all
+  顺序：格 1→6 取物点（方块放格中心、夹爪张开、压到两指夹住方块中部）→ 左 / 前 / 右各 1 个空中放置点
+        （放置点教在空中，离桌面 3-5 cm，到点直接松爪扔下，人随手拿走；前区在网格前方 0.20 m 左右是极限，别再远）
+  记录时超出限位（J4 ±155、J5 ±115）会提示重摆——手腕翻转的姿态回放会被拒绝
+  放置点手腕姿态要和取物点一样自然（J4 接近 0、J5 在 ±40° 内）；曾出现 J3=45/J4=-56/J5=89 的姿态固件拒绝执行，表现为"到位残差几十度"
+  单独补教某一点：
+ros2 run mecharm_sort teach_points cell 3
+ros2 run mecharm_sort teach_points zone front 0        # front 区放置点
+  看教了哪些、还缺哪些：
+ros2 run mecharm_sort teach_points show
+  低速回放某点核对（先确认周围无人，一人守急停）：
+ros2 run mecharm_sort teach_points goto cell 1
+ros2 run mecharm_sort teach_points goto zone left 0
+  文件：~/Desktop/exp3_taught_points.yaml（放在工作区外面，同步/重编译代码不会覆盖；改完不用重新编译）
+
+【5. 摆相机】任意位置，画面里看得到整张纸和至少 3 个码，机械臂回零（大臂竖直、小臂水平向前）时不挡网格
+  建议：网格左侧上方，斜向下看。以后每次挪相机都不用重新标定。
+
+【6. 只测感知（不接臂）】
+ros2 launch mecharm_sort sort_real.launch.py arm:=none
+  另开终端看调试图：
+ros2 run rqt_image_view rqt_image_view /detections/image
+  应看到：4 个码上有黄圈+id、6 个格心青色十字、方块框和类别。任务节点会因为等不到机械臂而报错退出，属正常。
+  只测相机：ros2 run mecharm_sort usb_camera   然后 ros2 topic hz /camera/image_raw
+
+【7. 正式运行】（方块摆好，夹爪张开，一人操作一人守急停）
+ros2 launch mecharm_sort sort_real.launch.py host:=10.42.0.89
+  流程全自动：回零 → 扫描 → 取编号最小的有物体格 → 分类放置 → 回零 → 再扫描 … 直到没有目标。
+  老师中途放回方块不用管，下一次扫描会再处理。每个动作前后都回零。
+  日志：~/exp3_logs_real/real_<时间>/  （task_state.log 状态机、detections.csv 识别、grasp_results.csv 抓取、errors.log 异常、summary.txt 汇总、scan_XX.png 截图、camera_view.mp4 视频）
+
+【8. 看结果】
+cat ~/exp3_logs_real/real_*/summary.txt | tail -8
+cat ~/exp3_logs_real/real_*/grasp_results.csv | tail -12
+
+【9. 急停】（另开终端；硬件急停优先）
+ros2 topic pub --once /soft_stop std_msgs/msg/Bool "data: true"
+
+【10. 只回零】（先另开终端 ros2 run mecharm_real real_driver，用完 Ctrl+C）
+ros2 run mecharm_sort teach_points goto home
+
+【10b. 用 TensorRT 引擎跑 YOLO（可选，更快）】
+  在 Jetson 本机转换一次（约 5 分钟，生成 ~/Desktop/yingjiehua/best.engine；换机器要重新转）：
+cd ~/Desktop/yingjiehua && python3 -c "from ultralytics import YOLO; YOLO('best.pt').export(format='engine', half=True, imgsz=640, device=0)"
+  运行时指定引擎：
+ros2 launch mecharm_sort sort_real.launch.py host:=10.42.0.89 model:=/home/nvidia/Desktop/yingjiehua/best.engine
+  注：这个模型很小（3M 参数），.pt 在 GPU 上 FP16 已是 ~21 ms/帧，引擎大约再快一倍；画面卡顿主要不是模型，
+  是相机帧积压和大图传输，相机节点已改为只发最新帧、调试图缩半。
+
+【11. 可调参数】 ~/Desktop/exp3_sim_ws/src/mecharm_sort/config/real.yaml（改完不用重新编译）
+  lift_deg           上方点 = 示教点 J2 往回收多少度（默认 25）
+  transit_lift_deg   横移时 J2 再多收多少度（默认 35）
+  move_duration / grip_duration   每段动作时长、夹爪时长（默认 4 s / 2 s，越大越慢）
+  max_speed          驱动速度百分比上限（默认 20）
+  conf               YOLO 置信度阈值（默认 0.5）
+  min_markers        至少看见几个码才算定位成功（默认 3）
+  state_machine.yaml 里 max_attempts（同格重试次数 2）、max_cycles（循环上限 12，老师加方块多的话调大）
+
+【12. 清理】（异常退出后跑一次）
+for p in $(ps -eo pid,args | awk '$2 ~ /python3/ && /(real_driver|pick_place_server|task_manager|yolo_detector|usb_camera|sort_real)/ {print $1}'); do kill $p; done
