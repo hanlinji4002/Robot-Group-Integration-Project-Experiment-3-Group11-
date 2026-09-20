@@ -8,6 +8,10 @@
 |---|---|
 | ![仿真检测](docs/images/sim_detect_gazebo.png) | ![真机检测](docs/images/real_yolo_detect.jpg) |
 
+**真机一轮取放**（识别 → 下降 → 夹取 → 抬升 → 搬到分类区）：
+
+![真机抓取演示](docs/images/real_pick_demo.gif)
+
 ---
 
 ## 一、实验目标
@@ -22,6 +26,10 @@
 | 蓝色 | 网格**右侧**空桌面（机器人右手边，−y） |
 
 桌面上**没有任何盒子**：只有一张打印的 3×2 网格纸，三个分类区就是网格外的空桌面。
+
+| 真机现场：mechArm 270 + 网格纸 + 三色方块 | 现场全景：USB 相机架在网格侧上方 |
+|---|---|
+| ![真机场景](docs/images/real_arm_grid.jpg) | ![现场全景](docs/images/real_scene_overview.jpg) |
 
 ## 二、四阶段路线与分工
 
@@ -88,6 +96,10 @@ w = H @ [u, v, 1];  w /= w[2];  cell = nearest(cells, w, tol=0.03)
 | 真机扫描画面（黄圈 = 定位码，青十字 = 反算格心） | 运行日志：4 码全中，程序自估相机位姿 |
 |---|---|
 | ![真机网格扫描](docs/images/real_grid_scan.png) | ![运行日志](docs/images/real_runtime_log.png) |
+
+现场屏幕：`GRID OK`，6 个格位的类别与票数（`5/5 帧`）逐行刷新，机械臂停在回零姿态不挡网格。
+
+![现场识别画面](docs/images/real_rqt_grid.jpg)
 
 ### 2. 多帧投票与 1→6 循环扫描（`task_manager.py`）
 
@@ -196,6 +208,10 @@ ros2 launch mecharm_sort sort_real.launch.py host:=10.42.0.89
 | Jetson 实时性能 | 1280×720 @ 15 fps，单帧推理 22.4 ms（CUDA FP16） |
 
 ### 真机抓取
+
+| 示教：变软后手摆到位，回车记录六关节角 | 特殊实验：完成 1–5 后在 1 号格补投红块 |
+|---|---|
+| ![示教](docs/images/real_teach_pose.jpg) | ![二次投放](docs/images/real_special_refill.jpg) |
 
 - 示教 9 个点（6 个取物点 + 左 / 前 / 右各 1 个空中放置点），记录后自动低速回放验证，超限当场重教。
 - 完整跑通「扫描 → 落格 → 选目标 → 抓取 → 分类放置 → 回零 → 再扫描」闭环，抓取定位、关节运动、夹爪动作、分类放置逐项验证。
