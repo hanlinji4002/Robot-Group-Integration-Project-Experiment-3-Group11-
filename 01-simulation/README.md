@@ -16,14 +16,18 @@
 ├── mecharm_sort_interfaces/            ROS 2 接口包（CMake）
 │   ├── package.xml / CMakeLists.txt
 │   └── action/PickPlace.action         抓取动作：command / grid_id / zone_id / slot → success / failed_stage / message；反馈 stage
-├── mecharm_sort/                       ROS 2 功能包（纯 Python，整个目录拷进工作区 src 即可编译）
+├── mecharm_sort/                       ROS 2 功能包（纯 Python，整个目录拷进工作区 src 即可编译；仿真与真机共用）
 │   ├── package.xml / setup.py / setup.cfg / resource/mecharm_sort
 │   ├── mecharm_sort/
-│   │   ├── color_detector.py           【识别】Image → HSV 颜色分割 → Detection2DArray（类别/框/置信度）+ 调试图 + 可选录像
+│   │   ├── color_detector.py           【识别·仿真】Image → HSV 颜色分割 → Detection2DArray（类别/框/置信度）+ 调试图 + 可选录像
+│   │   ├── yolo_detector.py            【识别·真机】同样的输入输出，换成 YOLOv8 推理（best.pt，CUDA FP16）
+│   │   ├── usb_camera.py               【相机·真机】OpenCV 读 /dev/video0 → sensor_msgs/Image（只保留最新帧，防积压）
+│   │   ├── grid_locator.py             【定位】画面四角 ArUco 码 → 单应矩阵 → 像素落格（含视差修正），仿真真机同一套
 │   │   ├── pick_place_server.py        【抓取】PickPlace 动作服务器：按网格编号查固定点、执行 14 步取放、夹取校验、失败安全返回
 │   │   ├── task_manager.py             【任务】表驱动状态机：扫描 → 像素→网格映射 → 选目标 → 调动作 → 异常分流 → 日志/汇总
 │   │   ├── planner.py                  固定点规划：网格/区域 → 全部路径点关节角（服务器与离线校验共用）
 │   │   ├── kinematics.py               mechArm 270 正/逆运动学、限位、虎口对齐、夹爪关键点
+│   │   ├── teach_points.py             【示教·真机】record / apply / show / goto，记录六关节角并自动低速回放验证（含限位检查）
 │   │   └── gz_truth.py                 仿真真值订阅（只用于成功判定与夹取校验，真机没有）
 │   ├── model/
 │   │   ├── arm_model.xacro             机械臂模型（沿用实验二：惯量、限位、夹爪 mimic、碰撞盒）
@@ -31,20 +35,32 @@
 │   │   ├── sort_world.sdf              正常场景：6 格各一个方块（绿红蓝各 2）
 │   │   └── sort_world_abnormal.sdf     异常场景：1 绿(注入夹取失败) 2 黄(未识别) 3 蓝 4 空 5 红 6 红(格子挪到不可达处)
 │   ├── config/
-│   │   ├── grid.yaml                   【桌面网格配置】3×2 连片网格（格 5×6 cm，行 x=0.105/0.155）、分类区域、相机外参、方块尺寸
+│   │   ├── grid.yaml                   【桌面网格配置】3×2 连片网格（格 5×6 cm，行 x=0.105/0.155）、分类区域、ArUco 码坐标、方块尺寸
 │   │   ├── grid_abnormal.yaml          同上，6 号格挪到 x=0.26（不可达）
 │   │   ├── state_machine.yaml          【状态机配置文件】状态、转移、重试次数、扫描帧数、置信度阈值
-│   │   ├── sort.yaml                   三个节点的参数（颜色阈值、运动参数、类别→区域表）
+│   │   ├── sort.yaml                   仿真：三个节点的参数（颜色阈值、运动参数、类别→区域表）
+│   │   ├── real.yaml                   真机：相机设备、YOLO 权重、示教回放、抬升/横移距离、速度等
+│   │   ├── taught_points.yaml          真机示教点（6 个取物点 + 各区放置点）
+│   │   ├── taught_points_sim.yaml      仿真里由逆解生成的示教点，用于验证回放链路
 │   │   ├── controllers.yaml            ros2_control 控制器（沿用实验二）
+│   │   ├── grid_sheet_A4.pdf / .png    【网格纸】A4 横向 100% 打印，3×2 网格 + 四角 ArUco 码
+│   │   ├── make_markers.py             生成 markers/ 下的 4 张 ArUco 码
+│   │   ├── make_taught_points.py       由逆解批量生成示教点文件（仿真验证用）
 │   │   └── check_layout.py             离线校验：全部"网格×区域×槽位"逆解 + 路径最低点检查，改布局先跑它
+│   ├── markers/
+│   │   └── aruco_0..3.png              网格纸四角的定位码（DICT_4X4_50，边长 3.5 cm）
 │   └── launch/
-│       └── sort_sim.launch.py          【一个 Launch 启动全部】Gazebo+相机 → 桥接 → 机器人+控制器 → 识别 → 抓取服务器 → 任务节点
+│       ├── sort_sim.launch.py          【仿真】Gazebo+相机 → 桥接 → 机器人+控制器 → 识别 → 抓取服务器 → 任务节点
+│       └── sort_real.launch.py         【真机】usb_camera → yolo_detector → 抓取服务器 → 任务节点 → real_driver
 ├── scripts/
 │   ├── run_sim.sh / stop_sim.sh        Jetson 上后台启动/停止
 │   └── probe_poses.py                  调试：把 Gazebo 里夹爪/方块真实位姿记成 CSV，对照运动学模型
+├── 仿真实验报告.md
 └── results/
     ├── normal/                         正常场景完整一轮：6/6 分类正确
-    └── abnormal/                       异常场景完整一轮：空格、未识别、不可达、夹取失败四类异常全部正确处理
+    ├── normal_taught_camera_right/     示教回放模式 + 相机换到右侧：6/6 分类正确
+    ├── abnormal/                       异常场景完整一轮：空格、未识别、不可达、夹取失败四类异常全部正确处理
+    └── yolo_sim_frame.png              真机 YOLO 节点直接跑在仿真画面上的截图（接口打通验证）
 ```
 
 ---
